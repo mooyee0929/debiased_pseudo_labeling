@@ -1,0 +1,65 @@
+hello world
+Namespace(arch='FixMatch', backbone='resnet50_encoder', batch_size=256, clip=True, cls=1000, data='/scratch/eecs542f25_class_root/eecs542f25_class/shared_data/imagenet-100', ema_m=0.999, eman=False, norm='None', pretrained='', seed=None, workers=8)
+Using CLIP
+
+=== Results ===
+Total predictions per class: [50, 52, 46, 64, 51, 59, 50, 37, 47, 55, 53, 50, 61, 31, 54, 48, 64, 28, 84, 43, 51, 77, 63, 36, 69, 40, 48, 53, 34, 40, 45, 47, 55, 56, 51, 50, 49, 51, 28, 57, 53, 54, 55, 38, 57, 53, 88, 58, 80, 27, 36, 13, 39, 65, 46, 73, 54, 38, 12, 45, 33, 21, 46, 36, 73, 34, 52, 68, 53, 56, 54, 62, 51, 61, 60, 48, 53, 52, 46, 59, 28, 61, 50, 41, 57, 71, 40, 49, 53, 43, 47, 33, 56, 49, 47, 49, 58, 41, 55, 43]
+
+ * Acc@1 78.880 Acc@5 95.980
+Total time: 44.62s
+
+=== Per-class Precision and Recall (sorted by prediction frequency) ===
+Rank   Class Name                           Predictions  Precision  Recall    
+--------------------------------------------------------------------------------
+1      46    bassinet                       88           0.5568    0.9800
+2      18    English_foxhound               84           0.4762    0.8000
+3      48    bonnet                         80           0.5250    0.8400
+4      21    American_Staffordshire_terrier 77           0.5584    0.8600
+5      55    Dutch_oven                     73           0.6164    0.9000
+6      64    laptop                         73           0.6164    0.9000
+7      85    theater_curtain                71           0.6901    0.9800
+8      24    kuvasz                         69           0.6087    0.8400
+9      67    modem                          68           0.5882    0.8000
+10     53    cocktail_shaker                65           0.7077    0.9200
+
+... (showing top 10 only)
+Plot saved to q1_precision_recall.png
+Confusion matrix saved to q1_confusion_matrix.png
+Top 5 most predicted classes: ['bassinet', 'English_foxhound', 'bonnet', 'American_Staffordshire_terrier', 'Dutch_oven']
+Column sums (top 5): [88, 84, 80, 77, 73]
+
+================================================================================
+Computing logit centroids and similarity analysis...
+================================================================================
+
+Analyzing: Most predicted = idx 46 ('bassinet'), count=88
+Analyzing: Least predicted = idx 58 ('hard_disc'), count=12
+
+Most Predicted: bassinet
+Rank   Class Name                     Index    Similarity  
+------------------------------------------------------------
+1      tub                            89       0.994488
+2      bonnet                         48       0.994367
+3      rocking_chair                  78       0.993692
+4      jean                           62       0.992185
+5      purse                          76       0.990986
+6      throne                         86       0.990630
+7      lampshade                      63       0.990522
+8      mortarboard                    69       0.989746
+9      chime                          51       0.989721
+10     bannister                      45       0.989557
+
+Least Predicted: hard_disc
+Rank   Class Name                     Index    Similarity  
+------------------------------------------------------------
+1      modem                          67       0.997239
+2      computer_keyboard              54       0.994778
+3      laptop                         64       0.994512
+4      car_wheel                      50       0.992279
+5      slide_rule                     83       0.992138
+6      iron                           61       0.992001
+7      vacuum                         90       0.991837
+8      mousetrap                      70       0.991417
+9      harmonica                      59       0.990399
+10     bottlecap                      49       0.990333
+done

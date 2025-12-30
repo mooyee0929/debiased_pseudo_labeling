@@ -1,0 +1,101 @@
+hello world
+Namespace(arch='FixMatch', backbone='resnet50_encoder', batch_size=256, clip=False, cls=1000, data='/scratch/eecs542f25_class_root/eecs542f25_class/shared_data/imagenet-100', ema_m=0.999, eman=False, norm='None', pretrained='debiaspl_zsl_epoch_50.pth.tar', seed=None, workers=8)
+=> creating model 'FixMatch' with backbone 'resnet50_encoder'
+=> loading pretrained model from 'debiaspl_zsl_epoch_50.pth.tar'
+=> loaded pre-trained model 'debiaspl_zsl_epoch_50.pth.tar' (epoch 46)
+
+=== Results ===
+Total predictions per class: [51, 54, 42, 55, 46, 50, 51, 48, 54, 45, 50, 50, 54, 42, 49, 52, 44, 45, 57, 53, 55, 80, 53, 50, 64, 44, 60, 47, 33, 29, 46, 55, 46, 52, 48, 48, 49, 49, 49, 53, 50, 52, 57, 43, 57, 56, 62, 54, 60, 46, 37, 58, 72, 54, 44, 46, 56, 50, 47, 51, 48, 36, 45, 44, 64, 36, 53, 45, 55, 43, 51, 69, 53, 38, 55, 50, 45, 57, 42, 60, 27, 58, 51, 52, 53, 35, 47, 47, 50, 42, 52, 37, 47, 49, 48, 52, 55, 51, 54, 50]
+
+ * Acc@1 86.960 Acc@5 97.660 Loss 0.5115
+Total time: 26.03s
+Plot saved to q2f_precision_recall.png
+
+=== Using Q1's class ordering ===
+Plot saved to q2_precision_recall.png
+Confusion matrix saved to q2_confusion_matrix.png
+Top 5 most predicted classes: ['bassinet', 'English_foxhound', 'bonnet', 'American_Staffordshire_terrier', 'Dutch_oven']
+Column sums (top 5): [80, 72, 69, 64, 64]
+
+================================================================================
+PART 1: Analyzing Q2's own most/least predicted classes
+================================================================================
+
+================================================================================
+Computing logit centroids and similarity analysis...
+================================================================================
+
+Analyzing: Most predicted = idx 21 ('American_Staffordshire_terrier'), count=80
+Analyzing: Least predicted = idx 80 ('safety_pin'), count=27
+
+Most Predicted: American_Staffordshire_terrier
+Rank   Class Name                     Index    Similarity  
+------------------------------------------------------------
+1      boxer                          28       0.935783
+2      Great_Dane                     29       0.860564
+3      vizsla                         23       0.810486
+4      Doberman                       27       0.723831
+5      Walker_hound                   17       0.699960
+6      Chesapeake_Bay_retriever       22       0.699410
+7      Mexican_hairless               31       0.678306
+8      English_foxhound               18       0.670177
+9      Rottweiler                     26       0.630246
+10     toy_terrier                    16       0.564290
+
+Least Predicted: safety_pin
+Rank   Class Name                     Index    Similarity  
+------------------------------------------------------------
+1      purse                          76       0.692231
+2      bottlecap                      49       0.612910
+3      mousetrap                      70       0.559455
+4      cocktail_shaker                53       0.554463
+5      lampshade                      63       0.537799
+6      iron                           61       0.511340
+7      harmonica                      59       0.507744
+8      reel                           77       0.485239
+9      jean                           62       0.478894
+10     chime                          51       0.470903
+
+================================================================================
+PART 2: Analyzing Q1's most/least predicted classes (using Q2's logits)
+================================================================================
+
+================================================================================
+Computing logit centroids and similarity analysis...
+================================================================================
+
+=== Using Q1's most/least predicted classes ===
+Q1 Most predicted: bassinet
+Q1 Least predicted: hard_disc
+
+Analyzing: Most predicted = idx 46 ('bassinet'), count=62
+Analyzing: Least predicted = idx 58 ('hard_disc'), count=47
+
+Most Predicted: bassinet
+Rank   Class Name                     Index    Similarity  
+------------------------------------------------------------
+1      rocking_chair                  78       0.678168
+2      bonnet                         48       0.644071
+3      tub                            89       0.566151
+4      purse                          76       0.510590
+5      throne                         86       0.492721
+6      iron                           61       0.482897
+7      vacuum                         90       0.477750
+8      tabby                          35       0.450901
+9      bannister                      45       0.432988
+10     lampshade                      63       0.417380
+
+Least Predicted: hard_disc
+Rank   Class Name                     Index    Similarity  
+------------------------------------------------------------
+1      modem                          67       0.758535
+2      laptop                         64       0.693380
+3      computer_keyboard              54       0.565754
+4      slide_rule                     83       0.555302
+5      iron                           61       0.507560
+6      mousetrap                      70       0.484018
+7      harmonica                      59       0.455392
+8      vacuum                         90       0.448659
+9      safety_pin                     80       0.398239
+10     purse                          76       0.397150
+done

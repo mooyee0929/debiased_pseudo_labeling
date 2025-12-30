@@ -1,0 +1,6 @@
+torch >= 1.6
+torchaudio==0.7.2
+tensorboard >= 1.14
+tqdm
+faiss-gpu
+pandas
