@@ -1,17 +1,15 @@
-# The entire homework can be completed on this file. 
-# It is derived from main_DebiasPL(_ZeroShot).py
+# CLIP zero-shot vs. DebiasPL prediction-bias analysis on ImageNet-100.
+# Derived from the upstream main_DebiasPL(_ZeroShot).py scripts.
 
-# The command to run this code on 1 gpu is: 
-# python starter.py
-# add the tag --clip to load untrained CLIP (question 1), without the tag, the SSL model is loaded (q.2)
+# Run on 1 GPU:
+#   python clip_vs_debiaspl_analysis.py --clip --data <imagenet-100 root>
+#       evaluates zero-shot CLIP (RN50)
+#   python clip_vs_debiaspl_analysis.py --pretrained <checkpoint> --data <imagenet-100 root>
+#       evaluates a DebiasPL checkpoint
 
-# RANDOM ASIDE: You can also check out the huggingface imagenet data. 
-# To access it, you need to create a free huggingface account
-# then, in terminal type: huggingface-cli login
-# follow the link to create a token (giving it read permissions to public gated repos) 
-# copy the token to login
-# navigate to: https://huggingface.co/datasets/ILSVRC/imagenet-1k
-# click agree and access repository
+# Optional: ImageNet-1k is also available on Hugging Face
+# (https://huggingface.co/datasets/ILSVRC/imagenet-1k). It is a gated dataset:
+# create a read token, run `huggingface-cli login`, and accept the terms on the dataset page.
 
 
 import argparse
@@ -48,7 +46,7 @@ from models import get_fixmatch_model
 from utils import utils, lr_schedule, get_norm, dist_utils
 import data.transforms as data_transforms
 # from engine import validate
-# we are making a new validate function
+# (replaced by validate_clip / validate_debiaspl below)
 from torch.utils.tensorboard import SummaryWriter
 
 import clip
@@ -65,7 +63,7 @@ backbone_model_names = sorted(name for name in backbone_models.__dict__
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 parser.add_argument('--data', default = '', metavar='DIR',
                     help='path to dataset')
-# OPTIONAL: you can modify to add your ImageNet100 path here
+# --data is the ImageNet-100 root that contains val/
 parser.add_argument('--arch', metavar='ARCH', default='FixMatch',
                     help='model architecture')
 parser.add_argument('--backbone', default='resnet50_encoder',
@@ -114,9 +112,9 @@ def main():
     args = parser.parse_args()
     print(args)
 
-    # 添加一個全局變數來儲存 Q1 的順序
-    global q1_sorted_indices
-    q1_sorted_indices = None
+    # Global holder for the CLIP run's class ordering
+    global clip_sorted_indices
+    clip_sorted_indices = None
 
     if not args.clip:
         # create model
@@ -167,22 +165,19 @@ def main():
     transform_val = data_transforms.get_transforms('DefaultVal')
 
     if not args.clip:
-        # TODO: Edit validate_542_logit for q.2 
-        # This is how you will generate the graphs you need
-        validate_542_logit(transform_val, model, criterion, args)
+        # DebiasPL checkpoint: metrics, plots and centroid analysis
+        validate_debiaspl(transform_val, model, criterion, args)
         return
     
     elif args.clip:
-        # TODO: Edit validate_542_clip for q.1 
-        # This is how you will generate the graphs you need
-        validate_542_clip(model, preprocess, args)
+        # Zero-shot CLIP: metrics, plots and centroid analysis
+        validate_clip(model, preprocess, args)
         return
     
 
 def get_centroids(prob):
-    # this is from the original code. It was used for CLDLoss
-    # might be helpful for your implementation in part c
-    # but you should not use it directly for getting centroids!
+    # From the upstream code, where it is used by CLDLoss. Not used here;
+    # analyze_centroid_similarity computes per-class logit centroids instead.
     N, D = prob.shape
     K = D
     cl = prob.argmin(dim=1).long().view(-1)  # -> class index
@@ -387,7 +382,7 @@ def plot_confusion_matrix(confusion_matrix, class_names, sorted_indices, save_pa
 ####################################################
 
 def analyze_centroid_similarity(class_logits, prediction_counts, imagenet100_to_name, 
-                                use_q1_classes=False):
+                                use_clip_classes=False):
     """
     Analyze centroid similarity given pre-collected logits.
     
@@ -395,7 +390,7 @@ def analyze_centroid_similarity(class_logits, prediction_counts, imagenet100_to_
         class_logits: Dict mapping class_idx -> list of logit tensors
         prediction_counts: List of prediction counts per class
         imagenet100_to_name: Dict mapping class_idx -> class_name
-        use_q1_classes: If True, load most/least predicted from Q1
+        use_clip_classes: If True, load most/least predicted classes from the CLIP run
     """
     
     print("\n" + "="*80)
@@ -413,19 +408,19 @@ def analyze_centroid_similarity(class_logits, prediction_counts, imagenet100_to_
     similarity_matrix = centroids_normalized @ centroids_normalized.T
     
     # Determine which classes to analyze
-    if use_q1_classes and os.path.exists('q1_prediction_info.pkl'):
-        with open('q1_prediction_info.pkl', 'rb') as f:
-            q1_info = pickle.load(f)
-        most_predicted_idx = q1_info['most_predicted_idx']
-        least_predicted_idx = q1_info['least_predicted_idx']
-        print("\n=== Using Q1's most/least predicted classes ===")
-        print(f"Q1 Most predicted: {q1_info['most_predicted_name']}")
-        print(f"Q1 Least predicted: {q1_info['least_predicted_name']}")
+    if use_clip_classes and os.path.exists('clip_prediction_info.pkl'):
+        with open('clip_prediction_info.pkl', 'rb') as f:
+            clip_info = pickle.load(f)
+        most_predicted_idx = clip_info['most_predicted_idx']
+        least_predicted_idx = clip_info['least_predicted_idx']
+        print("\n=== Using CLIP's most/least predicted classes ===")
+        print(f"CLIP most predicted: {clip_info['most_predicted_name']}")
+        print(f"CLIP least predicted: {clip_info['least_predicted_name']}")
     else:
         most_predicted_idx = np.argmax(prediction_counts)
         least_predicted_idx = np.argmin(prediction_counts)
-        if use_q1_classes:
-            print("\n=== WARNING: Q1 prediction info not found, using current model's predictions ===")
+        if use_clip_classes:
+            print("\n=== WARNING: CLIP prediction info not found, using current model's predictions ===")
     
     print(f"\nAnalyzing: Most predicted = idx {most_predicted_idx} ('{imagenet100_to_name[most_predicted_idx]}'), count={prediction_counts[most_predicted_idx]}")
     print(f"Analyzing: Least predicted = idx {least_predicted_idx} ('{imagenet100_to_name[least_predicted_idx]}'), count={prediction_counts[least_predicted_idx]}")
@@ -458,8 +453,7 @@ def analyze_centroid_similarity(class_logits, prediction_counts, imagenet100_to_
 
 ####################################################
 
-def validate_542_clip(model, preprocess, args): 
-    # TODO: Implement the visualizations needed here 
+def validate_clip(model, preprocess, args): 
     valdir = os.path.join(args.data, 'val')
     val_dataset = NoTensorImageFolder(valdir)
 
@@ -584,7 +578,7 @@ def validate_542_clip(model, preprocess, args):
     
     print("\n... (showing top 10 only)")
 
-    # At the end of validate_542_clip function
+    # Collect results for plotting
     results = {
         'total_counts': total_counts,
         'precisions': precisions,
@@ -596,30 +590,30 @@ def validate_542_clip(model, preprocess, args):
     }
 
     # Generate plot
-    plot_precision_recall_histogram(results, save_path='q1_precision_recall.png')
-    plot_confusion_matrix(confusion_matrix, imagenet100_to_name, sorted_indices, save_path='q1_confusion_matrix.png')
+    plot_precision_recall_histogram(results, save_path='clip_precision_recall.png')
+    plot_confusion_matrix(confusion_matrix, imagenet100_to_name, sorted_indices, save_path='clip_confusion_matrix.png')
 
 
 
     centroid_results = analyze_centroid_similarity(class_logits, total_counts, imagenet100_to_name)
     results['centroid_analysis'] = centroid_results
 
-    # 新增：保存 most/least predicted classes
+    # Save the most/least predicted classes for the DebiasPL run
     most_predicted_idx = np.argmax(total_counts)
     least_predicted_idx = np.argmin(total_counts)
 
-    q1_prediction_info = {
+    clip_prediction_info = {
         'most_predicted_idx': most_predicted_idx,
         'least_predicted_idx': least_predicted_idx,
         'most_predicted_name': imagenet100_to_name[most_predicted_idx],
         'least_predicted_name': imagenet100_to_name[least_predicted_idx]
     }
 
-    with open('q1_prediction_info.pkl', 'wb') as f:
-        pickle.dump(q1_prediction_info, f)
+    with open('clip_prediction_info.pkl', 'wb') as f:
+        pickle.dump(clip_prediction_info, f)
 
 
-    with open('q1_sorted_indices.pkl', 'wb') as f:
+    with open('clip_sorted_indices.pkl', 'wb') as f:
         pickle.dump(results['sorted_indices'], f)
 
     # print(total_counts)
@@ -631,8 +625,7 @@ def validate_542_clip(model, preprocess, args):
 
 
 
-def validate_542_logit(transform_val, model, criterion, args): 
-    # TODO: Implement the visualizations needed here 
+def validate_debiaspl(transform_val, model, criterion, args): 
 
     imagenet100_to_1K = {0: 15, 1: 45, 2: 54, 3: 57, 4: 64, 5: 74, 6: 90, 7: 99, 8: 119, 9: 120, 10: 122, 11: 131,
                         12: 137, 13: 151, 14: 155, 15: 157, 16: 158, 17: 166, 18: 167, 19: 169, 20: 176, 21: 180, 
@@ -768,15 +761,15 @@ def validate_542_logit(transform_val, model, criterion, args):
     }
     
     # Generate plots
-    plot_precision_recall_histogram(results, save_path='q2f_precision_recall.png')
+    plot_precision_recall_histogram(results, save_path='debiaspl_precision_recall.png')
 
-    if os.path.exists('q1_sorted_indices.pkl'):
-        with open('q1_sorted_indices.pkl', 'rb') as f:
+    if os.path.exists('clip_sorted_indices.pkl'):
+        with open('clip_sorted_indices.pkl', 'rb') as f:
             sorted_indices = pickle.load(f)
-        print("\n=== Using Q1's class ordering ===")
+        print("\n=== Using CLIP's class ordering ===")
     else:
-        print("\n=== WARNING: Q1 ordering file not found! ===")
-        print("Please run Q1 first with --clip flag")
+        print("\n=== WARNING: CLIP ordering file not found! ===")
+        print("Please run the CLIP evaluation first with the --clip flag")
         # Use current ordering
         col_sums = confusion_matrix.sum(axis=0)
         sorted_indices = sorted(range(100), key=lambda x: col_sums[x], reverse=True)
@@ -791,29 +784,29 @@ def validate_542_logit(transform_val, model, criterion, args):
         'confusion_matrix': confusion_matrix
     }
     
-    plot_precision_recall_histogram(results, save_path='q2_precision_recall.png')
+    plot_precision_recall_histogram(results, save_path='debiaspl_precision_recall_clip_order.png')
     plot_confusion_matrix(confusion_matrix, imagenet100_to_name, sorted_indices, 
-                         save_path='q2_confusion_matrix.png')
+                         save_path='debiaspl_confusion_matrix_clip_order.png')
     
 
     print("\n" + "="*80)
-    print("PART 1: Analyzing Q2's own most/least predicted classes")
+    print("PART 1: Analyzing DebiasPL's own most/least predicted classes")
     print("="*80)
-    centroid_results_q2 = analyze_centroid_similarity(
+    centroid_results_debiaspl = analyze_centroid_similarity(
         class_logits, total_counts, imagenet100_to_name, 
-        use_q1_classes=False
+        use_clip_classes=False
     )
-    results['centroid_analysis_q2'] = centroid_results_q2
+    results['centroid_analysis_debiaspl'] = centroid_results_debiaspl
 
-    # ========== Centroid Analysis: Q1's most/least predicted (on Q2 model) ==========
+    # ========== Centroid Analysis: CLIP's most/least predicted (on DebiasPL model) ==========
     print("\n" + "="*80)
-    print("PART 2: Analyzing Q1's most/least predicted classes (using Q2's logits)")
+    print("PART 2: Analyzing CLIP's most/least predicted classes (using DebiasPL's logits)")
     print("="*80)
-    centroid_results_q1_on_q2 = analyze_centroid_similarity(
+    centroid_results_clip_on_debiaspl = analyze_centroid_similarity(
         class_logits, total_counts, imagenet100_to_name, 
-        use_q1_classes=True
+        use_clip_classes=True
     )
-    # results['centroid_analysis_q1_on_q2'] = centroid_results_q1_on_q2
+    # results['centroid_analysis_clip_on_debiaspl'] = centroid_results_clip_on_debiaspl
 
     # print(total_counts)
     # print(' * Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f} Loss {loss.avg:.4f}'

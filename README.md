@@ -1,30 +1,151 @@
-# DebiasPL: Debiased Pseudo-Labeling
+# Debiased Pseudo-Labeling
 
-[![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/debiased-learning-from-naturally-imbalanced/few-shot-image-classification-on-imagenet-0)](https://paperswithcode.com/sota/few-shot-image-classification-on-imagenet-0?p=debiased-learning-from-naturally-imbalanced)
-[![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/debiased-learning-from-naturally-imbalanced/semi-supervised-image-classification-on-16)](https://paperswithcode.com/sota/semi-supervised-image-classification-on-16?p=debiased-learning-from-naturally-imbalanced)
-[![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/debiased-learning-from-naturally-imbalanced/semi-supervised-image-classification-on-1)](https://paperswithcode.com/sota/semi-supervised-image-classification-on-1?p=debiased-learning-from-naturally-imbalanced)
+This repository builds on the official PyTorch implementation of **DebiasPL** ([Debiased Learning from Naturally Imbalanced Pseudo-Labels](https://arxiv.org/abs/2201.01490), Wang et al., CVPR 2022) and adds an evaluation and analysis script, `clip_vs_debiaspl_analysis.py`, that measures how biased a classifier's predictions are on ImageNet-100. It compares zero-shot CLIP (ResNet-50) with a DebiasPL model trained on CLIP pseudo-labels. For each model it reports how often each class is predicted, per-class precision and recall, a frequency-ordered confusion matrix, and cosine similarity between class logit centroids.
 
-This repository contains the code (in PyTorch) for the model introduced in the following paper:
+The DebiasPL training code (`main_DebiasPL.py`, `main_DebiasPL_ZeroShot.py`, `engine.py`, `models/`, `backbone/`, `data/`, `utils/`, `scripts/`) is upstream code by the paper's authors. See [Acknowledgements](#acknowledgements) for what is upstream and what this repository adds.
 
-> **[Debiased Learning from Naturally Imbalanced Pseudo-Labels](https://openaccess.thecvf.com/content/CVPR2022/papers/Wang_Debiased_Learning_From_Naturally_Imbalanced_Pseudo-Labels_CVPR_2022_paper.pdf)**<br>
-> [Xudong Wang](http://people.eecs.berkeley.edu/~xdwang/), [Zhirong Wu](https://www.microsoft.com/en-us/research/people/wuzhiron/), [Long Lian](https://github.com/TonyLianLong/), and [Stella X. Yu](http://www1.icsi.berkeley.edu/~stellayu/)<br>
-> UC Berkeley and Microsoft Research<br>
-> [CVPR 2022](https://cvpr2022.thecvf.com)
+## What this repository adds
 
-[Project Page](https://people.eecs.berkeley.edu/~xdwang/projects/DebiasPL/) | [Paper](https://openaccess.thecvf.com/content/CVPR2022/papers/Wang_Debiased_Learning_From_Naturally_Imbalanced_Pseudo-Labels_CVPR_2022_paper.pdf) | [Preprint](https://arxiv.org/abs/2201.01490) | [Citation](#citation)
+`clip_vs_debiaspl_analysis.py` is adapted from the upstream `main_DebiasPL(_ZeroShot).py` scripts. It runs inference only, on a single GPU, and has two modes:
 
-<p align="center">
-  <img src="https://github.com/frank-xwang/debiased-pseudo-labeling/blob/main/DebiasPL.gif" width=70%>
-</p>
+- **CLIP zero-shot** (`--clip`): loads OpenAI CLIP `RN50`, encodes the prompt `"a photo of a {class}"` for each of the 100 ImageNet-100 classes, and classifies validation images by the scaled cosine similarity between image and text embeddings.
+- **DebiasPL** (`--pretrained <checkpoint>`): builds the upstream `FixMatch` model with a `resnet50_encoder` backbone, loads a DebiasPL checkpoint, and keeps the 100 ImageNet-100 columns of the 1000-way ImageNet logits.
 
-<p align="center">
-  <img align="center" src="https://github.com/frank-xwang/debiased-pseudo-labeling/blob/main/result.png" width=57%>
-  <img align="center" src="https://github.com/frank-xwang/debiased-pseudo-labeling/blob/main/ZSL-DomainShift.png" width=40%>
-</p>
+Both modes run the same analysis:
 
-## Citation
-If you find our work inspiring or use our codebase in your research, please consider giving a star ⭐ and a citation.
+- **Per-class statistics.** True positives, false positives and false negatives are counted per class. Precision and recall are computed from them, and classes are ranked by how often the model predicts them.
+- **Precision/recall vs. prediction frequency.** A two-panel plot shows precision (top) and recall (bottom) for each ranked class, with a cubic polynomial trend line, over a histogram of prediction counts.
+- **Confusion matrix.** A 100 x 100 annotated heatmap with rows and columns ordered by prediction frequency.
+- **Logit centroid similarity.** The script averages the logit vectors of each true class into a centroid, computes the cosine similarity between centroids, and lists the 10 classes closest to the most-predicted and least-predicted classes.
+- **Cross-model comparison.** The CLIP run saves its class ordering (`clip_sorted_indices.pkl`) and its most/least predicted classes (`clip_prediction_info.pkl`). The DebiasPL run then plots its results in CLIP's ordering (`debiaspl_precision_recall_clip_order.png`, `debiaspl_confusion_matrix_clip_order.png`) and in its own ordering (`debiaspl_precision_recall.png`). It also re-runs the centroid analysis for CLIP's most/least predicted classes using DebiasPL logits.
+
+`run_clip_zeroshot.sh` and `run_debiaspl_eval.sh` are SLURM batch scripts (1 GPU, 8 CPUs, 1 hour) that run the two modes. The `.log` / `.err` files and the `clip_*.png` / `debiaspl_*.png` figures in the repository root are the outputs of those runs. The logs were recorded before the files were renamed, so they still print the old figure names.
+
+## Results
+
+Both runs evaluate the ImageNet-100 validation split (5,000 images, 100 classes). The numbers come from `fsyang_test33808243.log` (CLIP) and `fsyang_test33808411.log` (DebiasPL).
+
+| Model | Top-1 | Top-5 | Most-predicted class (count) | Least-predicted class (count) |
+| --- | --- | --- | --- | --- |
+| CLIP RN50, zero-shot | 78.88% | 95.98% | bassinet (88) | hard_disc (12) |
+| DebiasPL, ResNet-50 (`debiaspl_zsl_epoch_50.pth.tar`) | 86.96% | 97.66% | American_Staffordshire_terrier (80) | safety_pin (27) |
+
+Observations from the logs and figures:
+
+- **CLIP's predictions are skewed.** Per-class prediction counts range from 12 to 88 for an average of 50. The most-predicted classes have high recall but low precision. For example, bassinet has precision 0.557 and recall 0.980, and English_foxhound has precision 0.476 and recall 0.800.
+- **DebiasPL's predictions are more balanced.** Counts range from 27 to 80. CLIP's most-predicted class (bassinet) drops from 88 to 62 predictions, and its least-predicted class (hard_disc) rises from 12 to 47.
+- **CLIP's class centroids are hard to tell apart; DebiasPL's are not.** Under CLIP, the 10 classes nearest to bassinet and to hard_disc all have centroid cosine similarity between 0.989 and 0.998. Under DebiasPL, the nearest neighbors are 0.678 (bassinet to rocking_chair) and 0.759 (hard_disc to modem).
+
+| CLIP zero-shot | DebiasPL (same class ordering) |
+| --- | --- |
+| ![CLIP precision/recall vs. prediction frequency](clip_precision_recall.png) | ![DebiasPL precision/recall in CLIP's class ordering](debiaspl_precision_recall_clip_order.png) |
+
+The confusion matrices are in `clip_confusion_matrix.png` and `debiaspl_confusion_matrix_clip_order.png`. The DebiasPL precision/recall plot in its own class ordering is `debiaspl_precision_recall.png`.
+
+## Repository structure
+
 ```
+.
+├── clip_vs_debiaspl_analysis.py              # analysis script added in this repo
+├── ANALYSIS.md                               # short setup / run / output reference for the analysis
+├── run_clip_zeroshot.sh, run_debiaspl_eval.sh  # SLURM jobs: CLIP run, DebiasPL run
+├── fsyang_test*.log / .err                   # stdout / stderr of the two runs
+├── clip_*.png, debiaspl_*.png                # figures produced by the analysis script
+├── main_DebiasPL.py            # upstream: semi-supervised DebiasPL training
+├── main_DebiasPL_ZeroShot.py   # upstream: DebiasPL training from CLIP pseudo-labels
+├── engine.py                   # upstream: validation loop
+├── models/                     # upstream: FixMatch and MoCo wrappers
+├── backbone/                   # upstream: ResNet backbones
+├── data/                       # upstream: datasets, transforms, RandAugment
+├── utils/                      # upstream: LR schedule, LARS, norm layers, distributed helpers
+├── scripts/                    # upstream: training launch scripts
+├── requirement.txt
+├── LICENSE                     # MIT, Copyright (c) 2022 Xudong Wang
+└── DebiasPL.gif, result.png, ZSL-DomainShift.png   # upstream figures
+```
+
+## Setup
+
+The runs used Python 3.8 with conda:
+
+```bash
+conda create -n debiaspl python=3.8
+conda activate debiaspl
+pip install -r requirement.txt
+pip install git+https://github.com/openai/CLIP.git
+```
+
+`requirement.txt` lists `torch`, `torchaudio`, `tensorboard`, `tqdm`, `faiss-gpu` and `pandas`. `clip_vs_debiaspl_analysis.py` also imports `torchvision` and `matplotlib`, which are not in that file, so install them too. A CUDA GPU is required because the script calls `.cuda()` unconditionally.
+
+## Data and checkpoint
+
+- **ImageNet-100.** Pass `--data` a directory that contains a `val/` folder in `torchvision` `ImageFolder` layout, with one sub-folder per class. The 100 classes and their mapping to ImageNet-1k indices are defined in `clip_vs_debiaspl_analysis.py` (`imagenet100_to_name`, `imagenet100_to_1K`).
+- **DebiasPL checkpoint.** The DebiasPL run uses `debiaspl_zsl_epoch_50.pth.tar`, the upstream authors' zero-shot DebiasPL ResNet-50 checkpoint, available from [Google Drive](https://drive.google.com/file/d/1UB_9c-2Hr0YVkg_qq24f_D9tsJHT7EjY/view?usp=sharing). The script expects a checkpoint dict with `state_dict` and `epoch` keys. Checkpoints are not committed (`checkpoints`, `pretrained` and `imagenet` are git-ignored).
+
+## Usage
+
+Run the CLIP evaluation first. The DebiasPL run reads the `clip_*.pkl` files that the CLIP run writes. Without them, it prints a warning and uses its own class ordering.
+
+```bash
+python clip_vs_debiaspl_analysis.py --clip --data /path/to/imagenet-100
+python clip_vs_debiaspl_analysis.py --pretrained debiaspl_zsl_epoch_50.pth.tar --data /path/to/imagenet-100
+```
+
+Other flags:
+
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `-b`, `--batch-size` | 256 | evaluation batch size |
+| `-j`, `--workers` | 8 | data-loading workers |
+| `--arch` | `FixMatch` | model wrapper (non-CLIP mode) |
+| `--backbone` | `resnet50_encoder` | backbone from `backbone/` |
+
+Outputs written to the working directory: `clip_precision_recall.png`, `clip_confusion_matrix.png`, `clip_prediction_info.pkl` and `clip_sorted_indices.pkl` from the CLIP run, and `debiaspl_precision_recall_clip_order.png`, `debiaspl_precision_recall.png` and `debiaspl_confusion_matrix_clip_order.png` from the DebiasPL run.
+
+On a SLURM cluster, set `IMAGENET100_DIR` (the scripts stop with an error if it is unset), adjust the partition and conda environment name (`debiaspl`) if needed, then submit:
+
+```bash
+export IMAGENET100_DIR=/path/to/imagenet-100
+sbatch run_clip_zeroshot.sh
+sbatch run_debiaspl_eval.sh
+```
+
+**Known issue:** in `validate_clip` (`clip_vs_debiaspl_analysis.py`), top-k accuracy is computed with `utils.accuracy(similarity, ...)`, but `similarity` is never defined in the committed file. Pass `logits` instead before running the CLIP mode.
+
+## Upstream DebiasPL training
+
+<p align="center">
+  <img src="DebiasPL.gif" width="70%" alt="DebiasPL overview (figure by the DebiasPL authors)">
+</p>
+
+DebiasPL builds on FixMatch with EMAN. It keeps an exponential moving average `qhat` of the model's predicted class distribution on unlabeled data and uses it in two places. Pseudo-labels are debiased with logit adjustment (`softmax(logits - tau * log(qhat))`), and an adaptive marginal loss adds `tau * log(qhat)` to the strong-augmentation logits. An optional cross-level instance-group discrimination loss (`--CLDLoss`) further exploits unlabeled data.
+
+The upstream training launch scripts are included. They use multi-GPU distributed training (each script sets `CUDA_VISIBLE_DEVICES`, so adjust it to your machine), a MoCo-EMAN checkpoint at `pretrained/res50_moco_eman_800ep.pth.tar`, and ImageNet at `imagenet/` with `train/`, `val/` and `indexes/*.csv` split files.
+
+```bash
+bash scripts/0.2perc-ssl/train_DebiasPL.sh
+bash scripts/0.2perc-ssl/train_DebiasPL_w_CLIP.sh
+bash scripts/1perc-ssl/train_DebiasPL.sh
+bash scripts/1perc-ssl/train_DebiasPL_w_CLIP.sh
+bash scripts/zsl/train_DebiasPL_ImageNet.sh
+```
+
+See the [upstream repository](https://github.com/frank-xwang/debiased-pseudo-labeling) for the split files, CLIP pseudo-label CSVs, released checkpoints and reported ImageNet-1k results.
+
+<p align="center">
+  <img src="result.png" width="57%" alt="DebiasPL results (figure by the DebiasPL authors)">
+  <img src="ZSL-DomainShift.png" width="40%" alt="DebiasPL zero-shot domain shift results (figure by the DebiasPL authors)">
+</p>
+
+## Acknowledgements
+
+- **Upstream code.** The DebiasPL implementation, training scripts, `LICENSE` and the figures `DebiasPL.gif`, `result.png` and `ZSL-DomainShift.png` come from [frank-xwang/debiased-pseudo-labeling](https://github.com/frank-xwang/debiased-pseudo-labeling) by Xudong Wang, Zhirong Wu, Long Lian and Stella X. Yu. The code is released under the MIT License (Copyright (c) 2022 Xudong Wang). Upstream credits parts of its code to [EMAN](https://github.com/amazon-research/exponential-moving-average-normalization), [FixMatch](https://github.com/kekmodel/FixMatch-pytorch), [CLIP](https://github.com/openai/CLIP), [CLD](https://github.com/frank-xwang/CLD-UnsupervisedLearning) and [LA](https://github.com/google-research/google-research/tree/master/logit_adjustment).
+- **Added in this repository.** The evaluation and analysis code in `clip_vs_debiaspl_analysis.py` (precision/recall statistics, plots, confusion matrix, centroid similarity and cross-model comparison), the SLURM scripts and the run outputs. The model-loading scaffold in `clip_vs_debiaspl_analysis.py` is derived from the upstream training scripts.
+- **CLIP.** Zero-shot classification uses [OpenAI CLIP](https://github.com/openai/CLIP).
+
+If you use DebiasPL, please cite the original paper:
+
+```bibtex
 @inproceedings{wang2022debiased,
   title={Debiased Learning from Naturally Imbalanced Pseudo-Labels},
   author={Wang, Xudong and Wu, Zhirong and Lian, Long and Yu, Stella X},
@@ -33,90 +154,3 @@ If you find our work inspiring or use our codebase in your research, please cons
   year={2022}
 }
 ```
-
-## Updates
-[06/2022] Support DebiasPL w/ CLIP for more label-efficient learning. DebiasPL (ResNet50) achieves 69.6% (71.3%) top-1 accuray on ImageNet only using 0.2% (1%) labels!
-
-[04/2022] Initial Commit. Support zero-shot learning and semi-supervised learning on ImageNet.
-
-## Requirements
-### Packages
-* Python >= 3.7, < 3.9
-* PyTorch >= 1.6
-* torchaudio==0.7.2
-* tensorboard >= 1.14 (for visualization)
-* tqdm
-* faiss-gpu
-* pandas
-* apex (optional, unless using mixed precision training)
-
-### Hardware requirements
-8 GPUs with >= 11G GPU RAM or 4 GPUs with >= 16G GPU RAM are recommended.
-
-## Dataset and Pre-trained Model Preparation
-Please download pre-trained [MoCo-EMAN model](https://eman-cvpr.s3.amazonaws.com/models/res50_moco_eman_800ep.pth.tar), make a new folder called pretrained and place checkpoints under it. Please download the ImageNet dataset from [this link](http://www.image-net.org/). Then, move and extract the training and validation images to labeled subfolders, using the following [shell script](https://github.com/pytorch/examples/blob/main/imagenet/extract_ILSVRC.sh). 
-The indexes for semi-supervised learning experiments can be found at [here](https://drive.google.com/drive/folders/18fi_lxZQK_J_E9Uam0c9G1VCfnKYyhmF?usp=sharing). The setting with 1% labeled data is the same as FixMatch. A new list of indexes is made for the setting with 0.2% labeled data by randomly selecting 0.2% of instances from each class. Please put all CSV files in the same location as below:
-
-```
-dataset
-└── imagenet
-    ├── indexes
-    │   ├── train_1p_index.csv
-    │   ├── train_99p_index.csv
-    |   └── ....
-    ├── train
-    │   ├── n01440764
-    │   │   └── *.jpeg
-    |   └── ....
-    └── val
-        ├── n01440764
-        │   └── *.jpeg
-        └── ....
-```
-
-## Training and Evaluation Instructions
-### Semi-supervised learning on ImageNet-1k
-0.2% labeled data (50 epochs):
-```
-bash scripts/0.2perc-ssl/train_DebiasPL.sh
-```
-1% labeled data (50 epochs):
-```
-bash scripts/1perc-ssl/train_DebiasPL.sh
-```
-1% labeled data (DebiasPL w/ CLIP, 100 epochs):
-```
-bash scripts/1perc-ssl/train_DebiasPL_w_CLIP.sh
-```
-
-| Method                | Backbone            | epochs            | 0.2% labels       | 1% labels 
-| --------------        | ----------------    | ----------------  | ----------------  | ----------------
-| FixMatch w/ EMAN      | RN50                | 50                | 43.6%             | 60.9% 
-| DebiasPL (reported)   | RN50                | 50                | 51.6%             | 65.3% 
-| DebiasPL (reproduced) | RN50                | 50                | 52.0% [[ckpt](https://drive.google.com/file/d/10cZ8nmdKyOJpSk8Mgs7PbzVySKm5yDRB/view?usp=sharing) \| [log](https://drive.google.com/file/d/1Wy6hJgvcuWc2sgwMq_fwq9OseTVVmgU9/view?usp=sharing)] | 65.6% [[ckpt](https://drive.google.com/file/d/1o2MYjkf-G_NGNHqMdXdYQWr2X_catw2Q/view?usp=sharing) \| [log](https://drive.google.com/file/d/1FmBJqb5YP1PZaQFW5AIFm4JO9c4xGcx8/view?usp=sharing)]
-| DebiasPL w/ CLIP (reproduced) | RN50                | 50         |  69.6% [[ckpt](https://drive.google.com/file/d/1xCYEmnusFy4rNwPznshbIyONIgSMEwMo/view?usp=drive_link) \| [log](https://drive.google.com/file/d/1TRYOHFWUWyBPN0w3Hsb4IwbVZd3uC9DC/view?usp=sharing)] | - 
-| DebiasPL w/ CLIP (reproduced) | RN50                | 100        |  70.4% [[ckpt](https://drive.google.com/file/d/1chbCaw0BX14bX8kdbZchBeiwaHaVL4Ib/view?usp=drive_link) \| [log](https://drive.google.com/file/d/1vLFwI0157Wh5y-J9yahe6hDa194kMDVq/view?usp=sharing)]  | 71.3% [[ckpt](https://drive.google.com/file/d/1S4ZhMTICtRipCv3Yp61yR_WoFxy3NRwG/view?usp=sharing) \| [log](https://drive.google.com/file/d/1gvPq_PzTwRFKplB3aUNrMSg8FUjMeFXi/view?usp=sharing)]
-
-The results reproduced by this codebase are often slightly higher than what was reported in the paper (52.0 vs 51.6; 65.6 vs. 65.3). We find it beneficial to apply cross-level instance-group discrimination loss [CLD](https://arxiv.org/pdf/2008.03813.pdf) to unlabeled instances to leverage their information fully.
-
-### Zero-shot learning
-Please [download](https://drive.google.com/drive/folders/1mAB49eceMmu0hHfEofcNOCzi1nTxsEon?usp=sharing) zero-shot predictions with a pre-trained CLIP (backbone: RN50) model and put them under imagenet/indexes/. Then run experiments on ImageNet-1k with:
-```
-bash scripts/zsl/train_DebiasPL.sh
-```
-
-| Method                | Backbone          | epochs            | top-1 acc
-| --------------        | ----------------  | ----------------  | ---------------- 
-| CLIP                  | RN50              | -                 | 59.6%         
-| CLIP                  | ViT-Base/32       | -                 | 63.2%   
-| DebiasPL (reported)   | RN50              | 100               | 68.3%
-| DebiasPL (reproduced) | RN50              | 50                | 68.7% [[ckpt](https://drive.google.com/file/d/1UB_9c-2Hr0YVkg_qq24f_D9tsJHT7EjY/view?usp=sharing) \| [log](https://drive.google.com/file/d/19LErjfTtkyOtZb4gae8ODR-lWnWF95Kn/view?usp=sharing)]
-
-## How to get support from us?
-If you have any general questions, feel free to email us at `xdwang at eecs.berkeley.edu`. If you have code or implementation-related questions, please feel free to send emails to us or open an issue in this codebase (We recommend that you open an issue in this codebase, because your questions may help others). 
-
-## License
-This project is licensed under the MIT License. See [LICENSE](LICENSE) for more details. The parts described below follow their original license.
-
-## Acknowledgements
-Part of the code is based on [EMAN](https://github.com/amazon-research/exponential-moving-average-normalization), [FixMatch](https://github.com/kekmodel/FixMatch-pytorch), [CLIP](https://github.com/openai/CLIP), [CLD](https://github.com/frank-xwang/CLD-UnsupervisedLearning), and [LA](https://github.com/google-research/google-research/tree/master/logit_adjustment).
